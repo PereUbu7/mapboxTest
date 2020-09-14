@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>Show drawn polygon area</title>
+<meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no" />
+<script src="https://api.mapbox.com/mapbox-gl-js/v1.12.0/mapbox-gl.js"></script>
+<link href="https://api.mapbox.com/mapbox-gl-js/v1.12.0/mapbox-gl.css" rel="stylesheet" />
+<style>
+	body { margin: 0; padding: 0; }
+	/*#map { position: absolute; top: 0; bottom: 0; width: 100%; }*/
+	#map { width: 500px; height: 500px; }*/
+</style>
+</head>
+<body>
+<style>
+.calculation-box {
+height: 75px;
+width: 150px;
+position: relative;
+bottom: 40px;
+left: 10px;
+background-color: rgba(255, 255, 255, 0.9);
+padding: 15px;
+text-align: center;
+}
+ 
+p {
+font-family: 'Open Sans';
+margin: 0;
+font-size: 13px;
+}
+</style>
+ 
+<script src="https://api.tiles.mapbox.com/mapbox.js/plugins/turf/v3.0.11/turf.min.js"></script>
+<script src="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-draw/v1.2.0/mapbox-gl-draw.js"></script>
+<link
+rel="stylesheet"
+href="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-draw/v1.2.0/mapbox-gl-draw.css"
+type="text/css"
+/>
+<div id="map"></div>
+<div class="calculation-box">
+<p>Draw a polygon using the draw tools.</p>
+<div id="calculated-area"></div>
+</div>
+ 
+<script>
+    
+
+    var LotsOfPointsMode = {};
+    
+// When the mode starts this function will be called.
+// The `opts` argument comes from `draw.changeMode('lotsofpoints', {count:7})`.
+// The value returned should be an object and will be passed to all other lifecycle functions
+LotsOfPointsMode.onSetup = function(opts) {
+  var state = {};
+  state.count = opts.count || 0;
+  return state;
+};
+
+// Whenever a user clicks on the map, Draw will call `onClick`
+LotsOfPointsMode.onClick = function(state, e) {
+  // `this.newFeature` takes geojson and makes a DrawFeature
+  var point = this.newFeature({
+    type: 'Feature',
+    properties: {
+      count: state.count
+    },
+    geometry: {
+      type: 'Point',
+      coordinates: [e.lngLat.lng, e.lngLat.lat]
+    }
+  });
+  this.addFeature(point); // puts the point on the map
+};
+
+// Whenever a user clicks on a key while focused on the map, it will be sent here
+LotsOfPointsMode.onKeyUp = function(state, e) {
+  if (e.keyCode === 27) return this.changeMode('simple_select');
+};
+
+// This is the only required function for a mode.
+// It decides which features currently in Draw's data store will be rendered on the map.
+// All features passed to `display` will be rendered, so you can pass multiple display features per internal feature.
+// See `styling-draw` in `API.md` for advice on making display features
+LotsOfPointsMode.toDisplayFeatures = function(state, geojson, display) {
+  display(geojson);
+};
+
+	mapboxgl.accessToken = 'pk.eyJ1IjoibWFydGlubm9yaW5nIiwiYSI6ImNrZXY1M3p1eDQxc2syeW5wczIzc2J4YjMifQ.SFVGYQK8MWqDrMI_99TglQ';
+var map = new mapboxgl.Map({
+container: 'map', // container id
+style: 'mapbox://styles/mapbox/satellite-v9', //hosted style id
+center: [15.694, 60.404], // starting position
+zoom: 15 // starting zoom
+});
+ 
+var draw = new MapboxDraw({
+    defaultMode: 'lots_of_points',
+  // Adds the LotsOfPointsMode to the built-in set of modes
+  modes: Object.assign({
+    lots_of_points: LotsOfPointsMode,
+  }, MapboxDraw.modes),
+});
+map.addControl(draw);
+
+ 
+map.on('draw.create', updateArea);
+map.on('draw.delete', updateArea);
+map.on('draw.update', updateArea);
+ 
+function updateArea(e) {
+    var data = draw.getAll();
+    console.log(data);
+    var answer = document.getElementById('calculated-area');
+    if (data.features.length > 0) {
+        var area = turf.area(data);
+        // restrict to area to 2 decimal points
+        var rounded_area = Math.round(area * 100) / 100;
+        answer.innerHTML =
+            '<p><strong>' +
+            rounded_area +
+            '</strong></p><p>square meters</p>';
+    } else {
+        answer.innerHTML = '';
+        if (e.type !== 'draw.delete')
+            alert('Use the draw tools to draw a polygon!');
+        }
+    }
+
+    function setLotsOfPoints()
+    {
+        draw.changeMode('lots_of_points');
+        console.log(draw.getMode());
+    }
+</script>
+<button onclick="setLotsOfPoints()">Lots of points</button>
+</body>
+</html>

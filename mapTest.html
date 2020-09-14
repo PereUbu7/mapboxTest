@@ -1,0 +1,27 @@
+<!DOCTYPE HTML>
+<html>
+	<head>
+		<title>Kartan</title>
+		
+		<meta content="text/html;charset=utf-8" http-equiv="Content-Type">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        
+        <script src='https://api.mapbox.com/mapbox-gl-js/v1.12.0/mapbox-gl.js'></script>
+        <link href='https://api.mapbox.com/mapbox-gl-js/v1.12.0/mapbox-gl.css' rel='stylesheet' />
+    </head>
+    <body>
+        <div id='map' style='width: 400px; height: 300px;'></div>
+        <script>
+            mapboxgl.accessToken = 'pk.eyJ1IjoibWFydGlubm9yaW5nIiwiYSI6ImNrZXY1M3p1eDQxc2syeW5wczIzc2J4YjMifQ.SFVGYQK8MWqDrMI_99TglQ';
+            let map = new mapboxgl.Map(
+                {
+                    container: 'map',
+                    style: 'mapbox://styles/mapbox/satellite-v9',
+                    zoom: 15,
+                    center: [15.694, 60.404]
+                }
+            );
+        </script>
+        <a href='drawMap.html'>Draw test</a>
+    </body>
+</html>
