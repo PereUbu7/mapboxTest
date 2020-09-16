@@ -6,6 +6,8 @@
 <meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no" />
 <script src="https://api.mapbox.com/mapbox-gl-js/v1.12.0/mapbox-gl.js"></script>
 <link href="https://api.mapbox.com/mapbox-gl-js/v1.12.0/mapbox-gl.css" rel="stylesheet" />
+
+<script src="modeSelectLine.js"></script>
 <style>
 	body { margin: 0; padding: 0; }
 	/*#map { position: absolute; top: 0; bottom: 0; width: 100%; }*/
@@ -32,7 +34,8 @@ font-size: 13px;
 }
 </style>
  
-<script src="https://api.tiles.mapbox.com/mapbox.js/plugins/turf/v3.0.11/turf.min.js"></script>
+<!-- <script src="https://api.tiles.mapbox.com/mapbox.js/plugins/turf/v3.0.11/turf.min.js"></script> -->
+<script src='https://unpkg.com/@turf/turf/turf.min.js'></script>
 <script src="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-draw/v1.2.0/mapbox-gl-draw.js"></script>
 <link
 rel="stylesheet"
@@ -47,7 +50,8 @@ type="text/css"
  
 <script>
     
-
+    let allFeatures = [];
+    let selectedFeatures = [];
     var LotsOfPointsMode = {};
     
 // When the mode starts this function will be called.
@@ -101,6 +105,7 @@ var draw = new MapboxDraw({
   // Adds the LotsOfPointsMode to the built-in set of modes
   modes: Object.assign({
     lots_of_points: LotsOfPointsMode,
+    selectLine: ModeSelectLine,
   }, MapboxDraw.modes),
 });
 map.addControl(draw);
@@ -127,14 +132,175 @@ function updateArea(e) {
         if (e.type !== 'draw.delete')
             alert('Use the draw tools to draw a polygon!');
         }
+}
+
+function createTurnAreaBoundary(width)
+{
+  console.log(width);
+
+  // Get selected features
+  let selectedFeat = allFeatures.filter(x => selectedFeatures.includes(x.properties.id));
+
+  // Create boundaries
+  let boundaries = selectedFeat.map(x => turf.lineOffset(x, -width, {units: 'meters'}));
+
+  // Create a feature collection object
+  let featureCollection = turf.featureCollection(boundaries);
+
+  // Clip/prolonge boundaries
+  let longBoundaries = boundaries.map(x => turf.transformScale(x, 30));
+  let m = turf.featureCollection(allFeatures.concat(longBoundaries));
+
+  let features = [];
+  for(let i = 0; i < longBoundaries.length; i++){
+    let centerOfLine = turf.center(longBoundaries[i]);
+    let intersections = turf.lineIntersect(longBoundaries[i], m);
+
+    if(intersections.features.length == 2){
+      features.push(turf.lineString(intersections.features.map(x => x.geometry.coordinates), {'id': 'boundaries'}));
     }
+    else if(intersections.features.length > 2){
+      // Get all distancies and angles to them
+      let point = turf.point(intersections.features[0].geometry.coordinates);
+      bearings = intersections.features.map(x => turf.bearing(centerOfLine, x.geometry));
+      distances = intersections.features.map(x => turf.distance(centerOfLine, x.geometry));
+      vectors = intersections.features.map(x => (
+        {
+          bearing: turf.bearing(centerOfLine, x.geometry),
+          distance: turf.distance(centerOfLine, x.geometry),
+          point: x.geometry.coodinates
+        }));
+      let index1 = vectors.map(x => x.distance).indexOf(Math.min(...vectors.map(x => x.distance)));
+      let oppositeAngle = vectors[index1].bearing > 0 ? vectors[index1].bearing - 180 : vectors[index1].bearing + 180;
+      let index2 = vectors.map(x => x.distance).indexOf(Math.min(...vectors.filter(x =>  oppositeAngle+1 > x.bearing && oppositeAngle-1 < x.bearing).map(x => x.distance)));
+      
+      features.push(turf.lineString([ intersections.features[index1].geometry.coordinates, intersections.features[index2].geometry.coordinates], {'id': 'boundaries'}));
+    }
+  }
+  featureCollection = turf.featureCollection(features);
+
+  if(map.getSource('boundaries')){
+        map.removeLayer('boundaries');
+        map.removeSource('boundaries');
+      }
+      
+      map.addSource('boundaries', {type: 'geojson', data: featureCollection});
+      
+      if(!map.getLayer('boundaries')){
+        map.addLayer({
+          id: 'boundaries',
+          type: 'line',
+          source: 'boundaries',
+          'paint': {
+            'line-color': '#d4ad72',
+            'line-width': 3,
+            'line-opacity': 0.8,
+            'line-dasharray': [1, 1]
+          }
+        });
+      }
+}
 
     function setLotsOfPoints()
     {
         draw.changeMode('lots_of_points');
-        console.log(draw.getMode());
+    }
+
+    function setSelectLine()
+    {
+      // Take all points from all polygons
+      let t = draw.getAll()
+        .features
+        .filter(x => x.geometry.type == 'Polygon')
+        .map(x => turf.rewind(x))
+        .map(x => x.geometry.coordinates)
+        .flat(2);
+      
+      // Create lineString features from every pair of points
+        features = [];
+      for(let i = 0; i < t.length - 1; i++) {
+        let lineString = turf.lineString(t.slice(i, i+2));
+        lineString.properties.id = i + allFeatures.length;
+        features.push(lineString);
+      }
+      
+      // Add new features to total collection of features
+      allFeatures = allFeatures.concat(features);
+
+      // Create a feature collection object
+      let featureCollection = turf.featureCollection(allFeatures);
+
+      if(map.getSource('linesToSelect')){
+        map.removeLayer('linesToSelect');
+        map.removeLayer('linesToSelect-highlighted');
+        map.removeSource('linesToSelect');
+      }
+      
+      map.addSource('linesToSelect', {type: 'geojson', data: featureCollection});
+      
+      if(!map.getLayer('linesToSelect')){
+        map.addLayer({
+          id: 'linesToSelect',
+          type: 'line',
+          source: 'linesToSelect',
+          'paint': {
+            'line-color': '#ed6498',
+            'line-width': 3,
+            'line-opacity': 0.8
+          }
+        });
+      }
+
+      if(!map.getLayer('linesToSelect-highlighted')){
+        map.addLayer({
+          id: 'linesToSelect-highlighted',
+          type: 'line',
+          source: 'linesToSelect',
+          'paint': {
+            'line-color': '#ffffff',
+            'line-width': 5,
+            'line-opacity': 1
+        },
+        filter: ['in', 'id', '']
+        });
+      };
+
+      draw.deleteAll();
+
+
+      map.on('click', 'linesToSelect', e => {
+        console.log(e);
+        var bbox = [
+          [e.point.x - 20, e.point.y - 20],
+          [e.point.x + 20, e.point.y + 20]
+        ];
+        var features = map.queryRenderedFeatures(bbox, {
+          layers: ['linesToSelect']
+        });
+
+        selectedIds = features.map(x => x.properties.id);
+
+        if(selectedFeatures.some(x => selectedIds.includes(x)))
+        {
+          selectedFeatures = selectedFeatures.filter(x => !selectedIds.includes(x));
+        }
+        else
+        {
+          selectedFeatures = selectedFeatures.concat(selectedIds);
+        }
+
+        var filter = ['in', 'id'].concat(selectedFeatures);
+
+        map.setFilter('linesToSelect-highlighted', filter);
+
+        console.log(features);
+      });
+      console.log(featureCollection);
+      //draw.changeMode('selectLine');
     }
 </script>
 <button onclick="setLotsOfPoints()">Lots of points</button>
+<button onclick="setSelectLine()">Select line</button>
+<input id="turnAreaWidth" type="numer" step="0.1" placeholder="Meter vändteg" onchange="createTurnAreaBoundary(this.value)">
 </body>
 </html>
