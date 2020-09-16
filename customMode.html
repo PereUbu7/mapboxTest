@@ -8,6 +8,8 @@
 <link href="https://api.mapbox.com/mapbox-gl-js/v1.12.0/mapbox-gl.css" rel="stylesheet" />
 
 <script src="modeSelectLine.js"></script>
+<script src="Field.js"></script>
+<script src="Row.js"></script>
 <style>
 	body { margin: 0; padding: 0; }
 	/*#map { position: absolute; top: 0; bottom: 0; width: 100%; }*/
@@ -50,6 +52,7 @@ type="text/css"
  
 <script>
     
+    let fields = [];
     let allFeatures = [];
     let selectedFeatures = [];
     var LotsOfPointsMode = {};
@@ -114,6 +117,16 @@ map.addControl(draw);
 map.on('draw.create', updateArea);
 map.on('draw.delete', updateArea);
 map.on('draw.update', updateArea);
+
+map.on('draw.create', e => {
+  if(draw.getMode() == 'draw_polygon') {
+    let newField = new Field();
+    newField.addOuterFeature(draw.getAll());
+    fields.push(newField);
+
+    convertDrawToLayer();
+  }
+});
  
 function updateArea(e) {
     var data = draw.getAll();
@@ -206,8 +219,7 @@ function createTurnAreaBoundary(width)
         draw.changeMode('lots_of_points');
     }
 
-    function setSelectLine()
-    {
+    function convertDrawToLayer() {
       // Take all points from all polygons
       let t = draw.getAll()
         .features
@@ -266,8 +278,10 @@ function createTurnAreaBoundary(width)
       };
 
       draw.deleteAll();
+    }
 
-
+    function setSelectLine()
+    {
       map.on('click', 'linesToSelect', e => {
         console.log(e);
         var bbox = [
@@ -293,6 +307,7 @@ function createTurnAreaBoundary(width)
 
         map.setFilter('linesToSelect-highlighted', filter);
 
+        createTurnAreaBoundary(document.querySelector("#turnAreaWidth").value);
         console.log(features);
       });
       console.log(featureCollection);
