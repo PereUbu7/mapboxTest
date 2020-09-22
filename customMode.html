@@ -7,13 +7,15 @@
 <script src="https://api.mapbox.com/mapbox-gl-js/v1.12.0/mapbox-gl.js"></script>
 <link href="https://api.mapbox.com/mapbox-gl-js/v1.12.0/mapbox-gl.css" rel="stylesheet" />
 
+<script src="myTurf.js"></script>
 <script src="modeSelectLine.js"></script>
+<script src="modeDrawMainStroke.js"></script>
 <script src="Field.js"></script>
 <script src="Row.js"></script>
 <style>
 	body { margin: 0; padding: 0; }
 	/*#map { position: absolute; top: 0; bottom: 0; width: 100%; }*/
-	#map { width: 500px; height: 500px; }*/
+	#map { width: 750px; height: 500px; }*/
 </style>
 </head>
 <body>
@@ -55,45 +57,6 @@ type="text/css"
     let fields = [];
     let allFeatures = [];
     let selectedFeatures = [];
-    var LotsOfPointsMode = {};
-    
-// When the mode starts this function will be called.
-// The `opts` argument comes from `draw.changeMode('lotsofpoints', {count:7})`.
-// The value returned should be an object and will be passed to all other lifecycle functions
-LotsOfPointsMode.onSetup = function(opts) {
-  var state = {};
-  state.count = opts.count || 0;
-  return state;
-};
-
-// Whenever a user clicks on the map, Draw will call `onClick`
-LotsOfPointsMode.onClick = function(state, e) {
-  // `this.newFeature` takes geojson and makes a DrawFeature
-  var point = this.newFeature({
-    type: 'Feature',
-    properties: {
-      count: state.count
-    },
-    geometry: {
-      type: 'Point',
-      coordinates: [e.lngLat.lng, e.lngLat.lat]
-    }
-  });
-  this.addFeature(point); // puts the point on the map
-};
-
-// Whenever a user clicks on a key while focused on the map, it will be sent here
-LotsOfPointsMode.onKeyUp = function(state, e) {
-  if (e.keyCode === 27) return this.changeMode('simple_select');
-};
-
-// This is the only required function for a mode.
-// It decides which features currently in Draw's data store will be rendered on the map.
-// All features passed to `display` will be rendered, so you can pass multiple display features per internal feature.
-// See `styling-draw` in `API.md` for advice on making display features
-LotsOfPointsMode.toDisplayFeatures = function(state, geojson, display) {
-  display(geojson);
-};
 
 	mapboxgl.accessToken = 'pk.eyJ1IjoibWFydGlubm9yaW5nIiwiYSI6ImNrZXY1M3p1eDQxc2syeW5wczIzc2J4YjMifQ.SFVGYQK8MWqDrMI_99TglQ';
 var map = new mapboxgl.Map({
@@ -104,11 +67,11 @@ zoom: 15 // starting zoom
 });
  
 var draw = new MapboxDraw({
-    defaultMode: 'lots_of_points',
+    defaultMode: 'draw_polygon',
   // Adds the LotsOfPointsMode to the built-in set of modes
   modes: Object.assign({
-    lots_of_points: LotsOfPointsMode,
     selectLine: ModeSelectLine,
+    drawMainStroke: ModeDrawMainStroke,
   }, MapboxDraw.modes),
 });
 map.addControl(draw);
@@ -120,7 +83,7 @@ map.on('draw.update', updateArea);
 
 map.on('draw.create', e => {
   if(draw.getMode() == 'draw_polygon') {
-    let newField = new Field();
+    let newField = new Field(turf);
     newField.addOuterFeature(draw.getAll());
     fields.push(newField);
 
@@ -146,78 +109,6 @@ function updateArea(e) {
             alert('Use the draw tools to draw a polygon!');
         }
 }
-
-function createTurnAreaBoundary(width)
-{
-  console.log(width);
-
-  // Get selected features
-  let selectedFeat = allFeatures.filter(x => selectedFeatures.includes(x.properties.id));
-
-  // Create boundaries
-  let boundaries = selectedFeat.map(x => turf.lineOffset(x, -width, {units: 'meters'}));
-
-  // Create a feature collection object
-  let featureCollection = turf.featureCollection(boundaries);
-
-  // Clip/prolonge boundaries
-  let longBoundaries = boundaries.map(x => turf.transformScale(x, 30));
-  let m = turf.featureCollection(allFeatures.concat(longBoundaries));
-
-  let features = [];
-  for(let i = 0; i < longBoundaries.length; i++){
-    let centerOfLine = turf.center(longBoundaries[i]);
-    let intersections = turf.lineIntersect(longBoundaries[i], m);
-
-    if(intersections.features.length == 2){
-      features.push(turf.lineString(intersections.features.map(x => x.geometry.coordinates), {'id': 'boundaries'}));
-    }
-    else if(intersections.features.length > 2){
-      // Get all distancies and angles to them
-      let point = turf.point(intersections.features[0].geometry.coordinates);
-      bearings = intersections.features.map(x => turf.bearing(centerOfLine, x.geometry));
-      distances = intersections.features.map(x => turf.distance(centerOfLine, x.geometry));
-      vectors = intersections.features.map(x => (
-        {
-          bearing: turf.bearing(centerOfLine, x.geometry),
-          distance: turf.distance(centerOfLine, x.geometry),
-          point: x.geometry.coodinates
-        }));
-      let index1 = vectors.map(x => x.distance).indexOf(Math.min(...vectors.map(x => x.distance)));
-      let oppositeAngle = vectors[index1].bearing > 0 ? vectors[index1].bearing - 180 : vectors[index1].bearing + 180;
-      let index2 = vectors.map(x => x.distance).indexOf(Math.min(...vectors.filter(x =>  oppositeAngle+1 > x.bearing && oppositeAngle-1 < x.bearing).map(x => x.distance)));
-      
-      features.push(turf.lineString([ intersections.features[index1].geometry.coordinates, intersections.features[index2].geometry.coordinates], {'id': 'boundaries'}));
-    }
-  }
-  featureCollection = turf.featureCollection(features);
-
-  if(map.getSource('boundaries')){
-        map.removeLayer('boundaries');
-        map.removeSource('boundaries');
-      }
-      
-      map.addSource('boundaries', {type: 'geojson', data: featureCollection});
-      
-      if(!map.getLayer('boundaries')){
-        map.addLayer({
-          id: 'boundaries',
-          type: 'line',
-          source: 'boundaries',
-          'paint': {
-            'line-color': '#d4ad72',
-            'line-width': 3,
-            'line-opacity': 0.8,
-            'line-dasharray': [1, 1]
-          }
-        });
-      }
-}
-
-    function setLotsOfPoints()
-    {
-        draw.changeMode('lots_of_points');
-    }
 
     function convertDrawToLayer() {
       // Take all points from all polygons
@@ -280,42 +171,27 @@ function createTurnAreaBoundary(width)
       draw.deleteAll();
     }
 
+    function setDrawField()
+    {
+        draw.changeMode('draw_polygon');
+    }
+
     function setSelectLine()
     {
-      map.on('click', 'linesToSelect', e => {
-        console.log(e);
-        var bbox = [
-          [e.point.x - 20, e.point.y - 20],
-          [e.point.x + 20, e.point.y + 20]
-        ];
-        var features = map.queryRenderedFeatures(bbox, {
-          layers: ['linesToSelect']
-        });
-
-        selectedIds = features.map(x => x.properties.id);
-
-        if(selectedFeatures.some(x => selectedIds.includes(x)))
-        {
-          selectedFeatures = selectedFeatures.filter(x => !selectedIds.includes(x));
-        }
-        else
-        {
-          selectedFeatures = selectedFeatures.concat(selectedIds);
-        }
-
-        var filter = ['in', 'id'].concat(selectedFeatures);
-
-        map.setFilter('linesToSelect-highlighted', filter);
-
-        createTurnAreaBoundary(document.querySelector("#turnAreaWidth").value);
-        console.log(features);
-      });
-      console.log(featureCollection);
-      //draw.changeMode('selectLine');
+      draw.changeMode('selectLine');
     }
+    
+    function setDrawMainStoke()
+    {
+      draw.changeMode('drawMainStroke');
+    }
+
 </script>
-<button onclick="setLotsOfPoints()">Lots of points</button>
+<button onclick="setDrawField()">Draw field</button>
 <button onclick="setSelectLine()">Select line</button>
 <input id="turnAreaWidth" type="numer" step="0.1" placeholder="Meter vändteg" onchange="createTurnAreaBoundary(this.value)">
+<div id="currentPosition"></div>
+<button onclick="setDrawMainStoke()">Draw main stroke</button>
+<input id="bedWidth" type="numer" step="0.1" placeholder="Bäddavstånd [m]">
 </body>
 </html>
