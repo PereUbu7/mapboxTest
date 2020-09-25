@@ -7,64 +7,36 @@ ModeDrawMainStroke.GetWidth = (x => {
 
 ModeDrawMainStroke.onSetup = function(opts) {
     opts = opts || {};
-    const featureId = opts.featureId;
 
-    let line, currentVertexPosition;
+    let line, currentVertexPosition, selectedField;
     let direction = 'forward';
     
-    if (featureId) {
-        line = this.getFeature(featureId);
-        if (!line) {
-          throw new Error('Could not find a feature with the provided featureId');
+    line = this.newFeature({
+        type: 'Feature',
+        properties: {},
+        geometry: {
+        type: 'LineString',
+        coordinates: []
         }
-        let from = opts.from;
-        if (from && from.type === 'Feature' && from.geometry && from.geometry.type === 'Point') {
-          from = from.geometry;
-        }
-        if (from && from.type === 'Point' && from.coordinates && from.coordinates.length === 2) {
-          from = from.coordinates;
-        }
-        if (!from || !Array.isArray(from)) {
-          throw new Error('Please use the `from` property to indicate which point to continue the line from');
-        }
-        const lastCoord = line.coordinates.length - 1;
-        if (line.coordinates[lastCoord][0] === from[0] && line.coordinates[lastCoord][1] === from[1]) {
-          currentVertexPosition = lastCoord + 1;
-          // add one new coordinate to continue from
-          line.addCoordinate(currentVertexPosition, ...line.coordinates[lastCoord]);
-        } else if (line.coordinates[0][0] === from[0] && line.coordinates[0][1] === from[1]) {
-          direction = 'backwards';
-          currentVertexPosition = 0;
-          // add one new coordinate to continue from
-          line.addCoordinate(currentVertexPosition, ...line.coordinates[0]);
-        } else {
-          throw new Error('`from` should match the point at either the start or the end of the provided LineString');
-        }
-      } else {
-        line = this.newFeature({
-          type: 'Feature',
-          properties: {},
-          geometry: {
-            type: 'LineString',
-            coordinates: []
-          }
-        });
-        currentVertexPosition = 0;
-        this.addFeature(line);
-      }
+    });
 
-      this.clearSelectedFeatures();
-      this.updateUIClasses({ mouse: 'Add' });
-      this.activateUIButton('Line');
-      this.setActionableState({
-        trash: true
-      });
+    currentVertexPosition = 0;
+    selectedField = [];
+    this.addFeature(line);
     
-      return {
+    this.clearSelectedFeatures();
+    this.updateUIClasses({ mouse: 'Add' });
+    this.activateUIButton('Line');
+    this.setActionableState({
+        trash: true
+    });
+    
+    return {
         line,
         currentVertexPosition,
-        direction
-      };
+        direction,
+        selectedField
+    };
 };
 
 ModeDrawMainStroke.onStop = function(state) {
@@ -98,6 +70,14 @@ ModeDrawMainStroke.onStop = function(state) {
   };
 
 ModeDrawMainStroke.clickAnywhere = function(state, e) {
+    if(!state.selectedField.some(x => x.selected)){
+        let p = turf.point([e.lngLat.lng, e.lngLat.lat]);
+        let t = fields.map(x => x.ActualFeature);
+        let selectedFields = fields.filter(x => turf.booleanPointInPolygon(p, x.ActualFeature.features[0]));
+        selectedFields.forEach(x => x.selected = true);
+        state.selectedField = selectedFields;
+        return null;
+    }
     // this ends the drawing after the user creates a second point, triggering this.onStop
     if (state.currentVertexPosition === 1) {
       state.line.addCoordinate(0, e.lngLat.lng, e.lngLat.lat);
@@ -144,8 +124,25 @@ ModeDrawMainStroke.toDisplayFeatures = function(state, geojson, display) {
     // displays the line as it is drawn
     display(geojson);
     
-    for(let i = -50; i < 50; i++){
-        display(lineOffsetFeature(geojson, i*this.GetWidth(), 'meters'));
+    let templateStrokes = JSON.parse(JSON.stringify(geojson));
+    maxDistance = distanceInFeatureCollectionFurthestFromLine(state.selectedField[0].ActualFeature, templateStrokes);
+    current = -Math.floor(maxDistance / this.GetWidth());
+
+    while(current * this.GetWidth() <= maxDistance){
+        let currentLine = lineOffsetFeature(templateStrokes, current * this.GetWidth(), 'meters');
+        let intersections = turf.lineIntersect(state.selectedField[0].ActualFeature, turf.transformScale(currentLine, 30));
+        if(intersections.features.length == 2) {
+            let choppedLine = turf.lineString([
+                intersections.features[0].geometry.coordinates, 
+                intersections.features[1].geometry.coordinates
+            ]);
+            choppedLine.properties.id = 'template';
+            display(choppedLine);
+        }
+        else {
+            console.log(intersections.features);
+        }
+        current += 1;
     }
   
     return null;

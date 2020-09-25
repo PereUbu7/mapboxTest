@@ -54,18 +54,23 @@ function lineOffsetFeature(line, distance, units) {
 }
 
 function processSegment(point1, point2, offset) {
+    // arccos of dot product of point1 and point2 is angle between points (in radians)
     var angle = Math.acos(
-        Math.cos(point1[1]*Math.PI/180)*Math.cos(point1[0]*Math.PI/180) * Math.cos(point2[1]*Math.PI/180)*Math.cos(point2[0]*Math.PI/180)
+      Math.cos(point1[1]*Math.PI/180)*Math.cos(point1[0]*Math.PI/180) * Math.cos(point2[1]*Math.PI/180)*Math.cos(point2[0]*Math.PI/180)
     + Math.cos(point1[1]*Math.PI/180)*Math.sin(point1[0]*Math.PI/180) * Math.cos(point2[1]*Math.PI/180)*Math.sin(point2[0]*Math.PI/180)
     + Math.sin(point1[1]*Math.PI/180) * Math.sin(point2[1]*Math.PI/180));
-    var L = angle*180/Math.PI;
-    if(L > 0){
-        var midPoint = [(point1[0] + point2[0])/2, (point1[1] + point2[1])/2];
 
-        var out1x = point1[0] + offset * (point2[1] - point1[1]) / L / Math.cos(midPoint[1]*Math.PI/180);
-        var out2x = point2[0] + offset * (point2[1] - point1[1]) / L / Math.cos(midPoint[1]*Math.PI/180);
-        var out1y = point1[1] + offset * (point1[0] - point2[0]) / L * Math.cos(midPoint[1]*Math.PI/180);
-        var out2y = point2[1] + offset * (point1[0] - point2[0]) / L * Math.cos(midPoint[1]*Math.PI/180);
+    // convert to degrees
+    var L = angle*180/Math.PI;
+
+    if(L > 0){
+        // Transform local cartesian coordinate system to account for lat steps being smaller farther away from the equator
+        var midPointFactor = Math.cos( (point1[1] + point2[1])/2 * Math.PI / 180);
+
+        var out1x = point1[0] + offset * (point2[1] - point1[1]) / L / midPointFactor;
+        var out2x = point2[0] + offset * (point2[1] - point1[1]) / L / midPointFactor;
+        var out1y = point1[1] + offset * (point1[0] - point2[0]) / L * midPointFactor;
+        var out2y = point2[1] + offset * (point1[0] - point2[0]) / L * midPointFactor;
     }
     else{
         var out1x = point1[0];
@@ -90,3 +95,22 @@ function radiansToDegrees(radians) {
     const degrees = radians % (2 * Math.PI);
     return degrees * 180 / Math.PI;
 }
+
+function distanceInFeatureCollectionFurthestFromLine(fc, l) {
+    let distancies = fc.features
+        .map(x => x.geometry.coordinates)
+        .flat(2)
+        .map(x => (
+            {
+                distance : turf.pointToLineDistance(turf.point(x), l, {units: 'meters'}),
+            }));
+    let max = Math.max(...distancies.map(x => x.distance));
+
+    return max;
+} 
+
+function flatten(arr) {
+    return arr.reduce(function (flat, toFlatten) {
+      return flat.concat(Array.isArray(toFlatten) ? flatten(toFlatten) : toFlatten);
+    }, []);
+  }

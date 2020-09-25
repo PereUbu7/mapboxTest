@@ -8,7 +8,13 @@ class Field {
         this.turf = turf;
     }
 
-    addOuterFeature(feature) {
+    get ActualFeature() {
+        return this.actualFeature 
+            && this.actualFeature.type 
+            && this.actualFeature.type == 'FeatureCollection' ? this.actualFeature : this.outerFeature;
+      }
+
+    setOuterFeature(feature) {
         this.outerFeature = feature;
     }
 

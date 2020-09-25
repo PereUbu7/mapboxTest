@@ -73,6 +73,49 @@ var draw = new MapboxDraw({
     selectLine: ModeSelectLine,
     drawMainStroke: ModeDrawMainStroke,
   }, MapboxDraw.modes),
+  userProperties: true,
+  styles: [{
+      'id': 'gl-draw-default',
+      'type': 'fill',
+      'paint': {
+        'fill-color': '#ff0000',
+        'fill-outline-color': '#3bb2d0',
+        'fill-opacity': 0.5
+      }
+    },
+    {
+        "id": "gl-draw-line",
+        "type": "line",
+        "filter": ["all", ["==", "$type", "LineString"], ["!=", "mode", "static"]],
+        "layout": {
+          "line-cap": "round",
+          "line-join": "round"
+        },
+        "paint": {
+          "line-color": [
+          "case", 
+          ['==', ['get', "id"], "template"], "#00ff00",
+          '#ff0000'
+        ],
+          "line-width": 1
+        }
+    },
+    {
+      'id': 'gl-draw-linestring-fill-inactive',
+      'type': 'line',
+      'filter': ['all', ['==', 'active', 'false'],
+        ['==', '$type', 'LineString'],
+        ['!=', 'mode', 'static']
+      ],
+      'paint': {
+        'line-color': [
+          "case", 
+          ['==', ['get', "id"], "template"], "#00ff00",
+          '#ff0000'
+        ],
+        'line-opacity': 0.5
+      }
+    }],
 });
 map.addControl(draw);
 
@@ -84,7 +127,7 @@ map.on('draw.update', updateArea);
 map.on('draw.create', e => {
   if(draw.getMode() == 'draw_polygon') {
     let newField = new Field(turf);
-    newField.addOuterFeature(draw.getAll());
+    newField.setOuterFeature(draw.getAll());
     fields.push(newField);
 
     convertDrawToLayer();
@@ -189,9 +232,9 @@ function updateArea(e) {
 </script>
 <button onclick="setDrawField()">Draw field</button>
 <button onclick="setSelectLine()">Select line</button>
-<input id="turnAreaWidth" type="numer" step="0.1" placeholder="Meter vändteg" onchange="createTurnAreaBoundary(this.value)">
+<input id="turnAreaWidth" type="numer" step="0.1" placeholder="Meter vändteg" onchange="createTurnAreaBoundary(this.value)" value="7.5">
 <div id="currentPosition"></div>
 <button onclick="setDrawMainStoke()">Draw main stroke</button>
-<input id="bedWidth" type="numer" step="0.1" placeholder="Bäddavstånd [m]">
+<input id="bedWidth" type="numer" step="0.1" placeholder="Bäddavstånd [m]" value="2.4">
 </body>
 </html>
