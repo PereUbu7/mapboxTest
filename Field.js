@@ -1,5 +1,5 @@
 class Field {
-    rows = [];
+    mainStrokes = [];
     outerFeature = {};
     actualFeature = {};
     turnrowFeatures = [];
@@ -18,14 +18,56 @@ class Field {
         this.outerFeature = feature;
     }
 
-    addRow(row) {
-        if(row instanceof Row){
-            this.rows.push(row);
+    addMainStroke(stroke, rowWidth) {
+        if(stroke instanceof MainStroke){
+            this.mainStrokes.push(stroke);
+
+            /* Create back reference from stroke to field */
+            stroke.field = this;
+
+            let newLines = this.getStrokesFromMainStroke(stroke.lineFeature, rowWidth);
+
+            stroke.lines.push(...newLines);
+
             return this;
         }
         else{
-            throw "addRow: 1st parameter must be of type Row";
+            throw "addMainStroke: 1st parameter must be of type MainStroke";
         }
+    }
+
+    toDisplayFeatures(display) {
+        for(let i = 0; i < this.mainStrokes.length; i++) {
+            for(let j = 0; j < this.mainStrokes[i].lines.length; j++) {
+                display(this.mainStrokes[i].lines[j]);
+            }
+        }
+    }
+
+    getStrokesFromMainStroke(mainStroke, rowWidth) {
+        maxDistance = this.turf.distanceInFeatureCollectionFurthestFromLine(this.ActualFeature, mainStroke);
+        current = -Math.floor(maxDistance / rowWidth);
+
+        let lines = [];
+
+        while (current * rowWidth <= maxDistance) {
+            let currentLine = this.turf.lineOffsetFeature(mainStroke, current * rowWidth, 'meters');
+            let intersections = turf.lineIntersect(this.ActualFeature, turf.transformScale(currentLine, 30));
+            if (intersections.features.length == 2) {
+                let choppedLine = turf.lineString([
+                    intersections.features[0].geometry.coordinates,
+                    intersections.features[1].geometry.coordinates
+                ]);
+                choppedLine.properties.id = 'template';
+                lines.push(choppedLine);
+            }
+            else {
+                // TODO
+                console.log(intersections.features);
+            }
+            current += 1;
+        }
+        return lines;
     }
 
     createTurnrow(width) {
@@ -34,7 +76,7 @@ class Field {
 
         // Create boundaries
         //let boundaries = selectedFeat.map(x => turf.lineOffset(x, -width, {units: 'meters'}));
-        let boundaries = selectedFeat.map(x => lineOffsetFeature(x, -width, 'meters'));
+        let boundaries = selectedFeat.map(x => this.turf.lineOffsetFeature(x, -width, 'meters'));
 
         // Clip/prolonge boundaries
         let longBoundaries = boundaries.map(x => turf.transformScale(x, 30));

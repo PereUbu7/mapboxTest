@@ -48,7 +48,9 @@ ModeDrawMainStroke.onStop = function(state) {
     if (this.getFeature(state.line.id) === undefined) return;
   
     // remove last added coordinate
+    // otherwise we get a flat polygon
     state.line.removeCoordinate('0');
+
     if (state.line.isValid()) {
       const lineGeoJson = state.line.toGeoJSON();
       // reconfigure the geojson line into a geojson point with a radius property
@@ -59,6 +61,10 @@ ModeDrawMainStroke.onStop = function(state) {
           coordinates: lineGeoJson.geometry.coordinates[0],
         },
       };
+
+      let mainStroke = new MainStroke();
+      mainStroke.lineFeature = state.line;
+      state.selectedField[0].addMainStroke(mainStroke, this.GetWidth());
   
       this.map.fire('draw.create', {
         features: [pointWithRadius],
@@ -105,9 +111,9 @@ ModeDrawMainStroke.onTap = ModeDrawMainStroke.onClick = function(state, e) {
 };
 
 ModeDrawMainStroke.toDisplayFeatures = function(state, geojson, display) {
-    const isActiveLine = geojson.properties.id === state.line.id;
-    geojson.properties.active = (isActiveLine) ? 'true' : 'false';
-    if (!isActiveLine) return display(geojson);
+    // const isActiveLine = geojson.properties.id === state.line.id;
+    // geojson.properties.active = (isActiveLine) ? 'true' : 'false';
+    // if (!isActiveLine) return display(geojson);
   
     // Only render the line if it has at least one real coordinate
     if (geojson.geometry.coordinates.length < 2) return null;
@@ -125,11 +131,22 @@ ModeDrawMainStroke.toDisplayFeatures = function(state, geojson, display) {
     display(geojson);
     
     let templateStrokes = JSON.parse(JSON.stringify(geojson));
-    maxDistance = distanceInFeatureCollectionFurthestFromLine(state.selectedField[0].ActualFeature, templateStrokes);
+    let strokes = this.getStrokesFromMainStroke(state, templateStrokes);
+    for(let i = 0; i < strokes.length; i++) {
+        display(strokes[i]);
+    }
+  
+    return null;
+  };
+
+  ModeDrawMainStroke.getStrokesFromMainStroke = function(state, mainStroke) {
+    maxDistance = MyTurf.distanceInFeatureCollectionFurthestFromLine(state.selectedField[0].ActualFeature, mainStroke);
     current = -Math.floor(maxDistance / this.GetWidth());
 
+    let lines = [];
+
     while(current * this.GetWidth() <= maxDistance){
-        let currentLine = lineOffsetFeature(templateStrokes, current * this.GetWidth(), 'meters');
+        let currentLine = MyTurf.lineOffsetFeature(mainStroke, current * this.GetWidth(), 'meters');
         let intersections = turf.lineIntersect(state.selectedField[0].ActualFeature, turf.transformScale(currentLine, 30));
         if(intersections.features.length == 2) {
             let choppedLine = turf.lineString([
@@ -137,16 +154,16 @@ ModeDrawMainStroke.toDisplayFeatures = function(state, geojson, display) {
                 intersections.features[1].geometry.coordinates
             ]);
             choppedLine.properties.id = 'template';
-            display(choppedLine);
+            lines.push(choppedLine);
         }
         else {
+            // TODO
             console.log(intersections.features);
         }
         current += 1;
     }
-  
-    return null;
-  };
+    return lines;
+  }
 
   function createVertex(parentId, coordinates, path, selected) {
     return {

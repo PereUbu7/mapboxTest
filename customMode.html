@@ -7,11 +7,18 @@
 <script src="https://api.mapbox.com/mapbox-gl-js/v1.12.0/mapbox-gl.js"></script>
 <link href="https://api.mapbox.com/mapbox-gl-js/v1.12.0/mapbox-gl.css" rel="stylesheet" />
 
+<script src='https://unpkg.com/@turf/turf/turf.min.js'></script>
+<script src="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-draw/v1.2.0/mapbox-gl-draw.js"></script>
+<link rel="stylesheet" href="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-draw/v1.2.0/mapbox-gl-draw.css" type="text/css"/>
+
 <script src="myTurf.js"></script>
 <script src="modeSelectLine.js"></script>
 <script src="modeDrawMainStroke.js"></script>
+<script src="modeDrawField.js"></script>
+<script src="modeViewFieldLines.js"></script>
 <script src="Field.js"></script>
 <script src="Row.js"></script>
+<script src="MainStroke.js"></script>
 <style>
 	body { margin: 0; padding: 0; }
 	/*#map { position: absolute; top: 0; bottom: 0; width: 100%; }*/
@@ -39,13 +46,7 @@ font-size: 13px;
 </style>
  
 <!-- <script src="https://api.tiles.mapbox.com/mapbox.js/plugins/turf/v3.0.11/turf.min.js"></script> -->
-<script src='https://unpkg.com/@turf/turf/turf.min.js'></script>
-<script src="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-draw/v1.2.0/mapbox-gl-draw.js"></script>
-<link
-rel="stylesheet"
-href="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-draw/v1.2.0/mapbox-gl-draw.css"
-type="text/css"
-/>
+
 <div id="map"></div>
 <div class="calculation-box">
 <p>Draw a polygon using the draw tools.</p>
@@ -65,13 +66,20 @@ style: 'mapbox://styles/mapbox/satellite-v9', //hosted style id
 center: [15.694, 60.404], // starting position
 zoom: 15 // starting zoom
 });
+
+map.on('draw.create', updateArea);
+map.on('draw.delete', updateArea);
+map.on('draw.update', updateArea);
+
+//const ModeDrawField = MapboxDraw.modes.draw_polygon;
  
 var draw = new MapboxDraw({
-    defaultMode: 'draw_polygon',
-  // Adds the LotsOfPointsMode to the built-in set of modes
+    defaultMode: 'simple_select',
   modes: Object.assign({
     selectLine: ModeSelectLine,
     drawMainStroke: ModeDrawMainStroke,
+    drawField: ModeDrawField,
+    viewFieldLines: ModeViewFieldLines,
   }, MapboxDraw.modes),
   userProperties: true,
   styles: [{
@@ -86,7 +94,7 @@ var draw = new MapboxDraw({
     {
         "id": "gl-draw-line",
         "type": "line",
-        "filter": ["all", ["==", "$type", "LineString"], ["!=", "mode", "static"]],
+        "filter": ["all", ["==", "$type", "LineString"]],//, ["!=", "mode", "static"]],
         "layout": {
           "line-cap": "round",
           "line-join": "round"
@@ -103,9 +111,9 @@ var draw = new MapboxDraw({
     {
       'id': 'gl-draw-linestring-fill-inactive',
       'type': 'line',
-      'filter': ['all', ['==', 'active', 'false'],
+      'filter': ['all', //['==', 'active', 'false'],
         ['==', '$type', 'LineString'],
-        ['!=', 'mode', 'static']
+        //['!=', 'mode', 'static']
       ],
       'paint': {
         'line-color': [
@@ -117,117 +125,23 @@ var draw = new MapboxDraw({
       }
     }],
 });
-map.addControl(draw);
+  map.addControl(draw);
 
- 
-map.on('draw.create', updateArea);
-map.on('draw.delete', updateArea);
-map.on('draw.update', updateArea);
-
-map.on('draw.create', e => {
-  if(draw.getMode() == 'draw_polygon') {
-    let newField = new Field(turf);
-    newField.setOuterFeature(draw.getAll());
-    fields.push(newField);
-
-    convertDrawToLayer();
+  function setDrawField() {
+    draw.changeMode('drawField');
   }
-});
- 
-function updateArea(e) {
-    var data = draw.getAll();
-    console.log(data);
-    var answer = document.getElementById('calculated-area');
-    if (data.features.length > 0) {
-        var area = turf.area(data);
-        // restrict to area to 2 decimal points
-        var rounded_area = Math.round(area * 100) / 100;
-        answer.innerHTML =
-            '<p><strong>' +
-            rounded_area +
-            '</strong></p><p>square meters</p>';
-    } else {
-        answer.innerHTML = '';
-        if (e.type !== 'draw.delete')
-            alert('Use the draw tools to draw a polygon!');
-        }
+
+  function setSelectLine() {
+    draw.changeMode('selectLine');
+  }
+
+  function setDrawMainStoke() {
+    draw.changeMode('drawMainStroke');
+  }
+
+function setViewFieldLines() {
+  draw.changeMode('viewFieldLines');
 }
-
-    function convertDrawToLayer() {
-      // Take all points from all polygons
-      let t = draw.getAll()
-        .features
-        .filter(x => x.geometry.type == 'Polygon')
-        .map(x => turf.rewind(x))
-        .map(x => x.geometry.coordinates)
-        .flat(2);
-      
-      // Create lineString features from every pair of points
-        features = [];
-      for(let i = 0; i < t.length - 1; i++) {
-        let lineString = turf.lineString(t.slice(i, i+2));
-        lineString.properties.id = i + allFeatures.length;
-        features.push(lineString);
-      }
-      
-      // Add new features to total collection of features
-      allFeatures = allFeatures.concat(features);
-
-      // Create a feature collection object
-      let featureCollection = turf.featureCollection(allFeatures);
-
-      if(map.getSource('linesToSelect')){
-        map.removeLayer('linesToSelect');
-        map.removeLayer('linesToSelect-highlighted');
-        map.removeSource('linesToSelect');
-      }
-      
-      map.addSource('linesToSelect', {type: 'geojson', data: featureCollection});
-      
-      if(!map.getLayer('linesToSelect')){
-        map.addLayer({
-          id: 'linesToSelect',
-          type: 'line',
-          source: 'linesToSelect',
-          'paint': {
-            'line-color': '#ed6498',
-            'line-width': 3,
-            'line-opacity': 0.8
-          }
-        });
-      }
-
-      if(!map.getLayer('linesToSelect-highlighted')){
-        map.addLayer({
-          id: 'linesToSelect-highlighted',
-          type: 'line',
-          source: 'linesToSelect',
-          'paint': {
-            'line-color': '#ffffff',
-            'line-width': 5,
-            'line-opacity': 1
-        },
-        filter: ['in', 'id', '']
-        });
-      };
-
-      draw.deleteAll();
-    }
-
-    function setDrawField()
-    {
-        draw.changeMode('draw_polygon');
-    }
-
-    function setSelectLine()
-    {
-      draw.changeMode('selectLine');
-    }
-    
-    function setDrawMainStoke()
-    {
-      draw.changeMode('drawMainStroke');
-    }
 
 </script>
 <button onclick="setDrawField()">Draw field</button>
@@ -236,5 +150,6 @@ function updateArea(e) {
 <div id="currentPosition"></div>
 <button onclick="setDrawMainStoke()">Draw main stroke</button>
 <input id="bedWidth" type="numer" step="0.1" placeholder="Bäddavstånd [m]" value="2.4">
+<button onclick="setViewFieldLines()">View field lines</button>
 </body>
 </html>
