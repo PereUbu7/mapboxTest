@@ -10,6 +10,11 @@ class GeoLine {
             && p[1] instanceof GeoPoint) {
                 this.points = p;
             }
+        else if(arguments.length === 2
+            && arguments[0] instanceof GeoPoint
+            && arguments[1] instanceof GeoPoint) {
+                this.points = [arguments[0], arguments[1]];
+            }
         return this.points;
     }
 }

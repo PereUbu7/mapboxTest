@@ -1,3 +1,5 @@
+"use strict"
+
 class GeoPoint {
     lon = 0;
     lat = 0;
@@ -17,12 +19,17 @@ class GeoPoint {
     }
 
     Coord(coord) {
-        if(Array.isArray(coord) && coord.length == 2)
-        {
+        if(Array.isArray(coord) && coord.length == 2) {
             this.lon = coord[0];
             this.lat = coord[1];
         }
-        return coord;
+        else if(arguments.length === 2
+        && !isNaN(arguments[0])
+        && !isNaN(arguments[1])) {
+            this.lon = arguments[0];
+            this.lat = arguments[1];
+        }
+        return [this.lon, this.lat];
     }
 
     constructor(lon, lat) {
